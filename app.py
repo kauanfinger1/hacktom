@@ -7,6 +7,9 @@ app = Flask(__name__)
 
 IA_WEBHOOK_URL = "https://primary-production-f46c1.up.railway.app/webhook/10ba380d-3a85-4fa9-a556-9673c294d40d"
 
+MICROSOFT_APP_ID = os.environ.get("MICROSOFT_APP_ID", "")
+MICROSOFT_APP_PASSWORD = os.environ.get("MICROSOFT_APP_PASSWORD", "")
+
 
 def extrair_texto(texto: str) -> str:
 
@@ -24,69 +27,141 @@ def extrair_texto(texto: str) -> str:
     return texto
 
 
-def extrair_pdf(dados):
+def obter_token_bot():
+
+    if not MICROSOFT_APP_ID or not MICROSOFT_APP_PASSWORD:
+        print("[TOKEN] MICROSOFT_APP_ID ou MICROSOFT_APP_PASSWORD não configurados")
+        return None
+
+    try:
+        resp = requests.post(
+            "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": MICROSOFT_APP_ID,
+                "client_secret": MICROSOFT_APP_PASSWORD,
+                "scope": "https://api.botframework.com/.default"
+            },
+            timeout=15
+        )
+
+        if resp.status_code == 200:
+            token = resp.json().get("access_token")
+            print("[TOKEN] token obtido com sucesso")
+            return token
+
+        print(f"[TOKEN] falha ao obter token status={resp.status_code}")
+
+    except Exception as e:
+        print(f"[TOKEN] erro: {e}")
+
+    return None
+
+
+def baixar_pdf_por_url(url, token):
+
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=60)
+
+        if resp.status_code == 200:
+            return resp.content
+
+        print(f"[PDF] falha download status={resp.status_code} url={url}")
+
+    except Exception as e:
+        print(f"[PDF] erro ao baixar: {e}")
+
+    return None
+
+
+def extrair_pdf_de_attachment(attachment, token=None):
+
+    content_type = (attachment.get("contentType") or "").lower()
+    nome_arquivo = attachment.get("name") or ""
+    content_info = attachment.get("content") or {}
+
+    if isinstance(content_info, str):
+        content_info = {}
+
+    if content_type == "application/vnd.microsoft.teams.file.download.info":
+        url = content_info.get("downloadUrl") or attachment.get("contentUrl") or ""
+        file_type = (content_info.get("fileType") or "").lower()
+        eh_pdf = file_type == "pdf" or nome_arquivo.lower().endswith(".pdf")
+    else:
+        url = attachment.get("contentUrl") or ""
+        eh_pdf = "pdf" in content_type or nome_arquivo.lower().endswith(".pdf")
+
+    if not eh_pdf or not url:
+        return None
+
+    conteudo = baixar_pdf_por_url(url, token)
+
+    if conteudo:
+        print(f"[PDF] arquivo encontrado: {nome_arquivo}")
+        return {
+            "filename": nome_arquivo or "documento.pdf",
+            "content": conteudo,
+            "mime_type": "application/pdf"
+        }
+
+    return None
+
+
+def extrair_pdf(dados, token=None):
 
     attachments = dados.get("attachments", [])
 
     print(f"[PDF] total de anexos: {len(attachments)}")
 
     for i, attachment in enumerate(attachments):
-
         content_type = (attachment.get("contentType") or "").lower()
         nome_arquivo = attachment.get("name") or ""
-        content_info = attachment.get("content") or {}
+        print(f"[PDF] anexo[{i}] contentType={content_type} name={nome_arquivo}")
 
-        print(f"[PDF] anexo[{i}] contentType={content_type} name={nome_arquivo} content={content_info}")
+        pdf = extrair_pdf_de_attachment(attachment, token)
+        if pdf:
+            return pdf
 
-        # Teams envia arquivos com contentType especial; URL fica em content.downloadUrl
-        if content_type == "application/vnd.microsoft.teams.file.download.info":
-            url = content_info.get("downloadUrl") or attachment.get("contentUrl") or ""
-            file_type = (content_info.get("fileType") or "").lower()
-            eh_pdf = file_type == "pdf" or nome_arquivo.lower().endswith(".pdf")
-        else:
-            url = attachment.get("contentUrl") or ""
-            eh_pdf = (
-                "pdf" in content_type
-                or nome_arquivo.lower().endswith(".pdf")
-            )
+    return None
 
-        print(f"[PDF] anexo[{i}] url={url} eh_pdf={eh_pdf}")
 
-        if not eh_pdf:
-            continue
+def buscar_pdf_na_conversa(dados, token):
 
-        if not url:
-            print("[PDF] URL não encontrada no anexo")
-            continue
+    service_url = (dados.get("serviceUrl") or "").rstrip("/")
+    conversation_id = (dados.get("conversation") or {}).get("id", "")
 
-        try:
+    if not service_url or not conversation_id or not token:
+        return None
 
-            resposta = requests.get(url, timeout=60)
+    print(f"[CONV] buscando atividades em {service_url}")
 
-            if resposta.status_code in (401, 403):
+    try:
+        url = f"{service_url}/v3/conversations/{conversation_id}/activities"
+        resp = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30
+        )
 
-                bot_token = dados.get("channelData", {}).get("token", "")
+        if resp.status_code != 200:
+            print(f"[CONV] falha ao buscar atividades status={resp.status_code}")
+            return None
 
-                headers = {}
-                if bot_token:
-                    headers["Authorization"] = f"Bearer {bot_token}"
+        atividades = resp.json().get("activities", [])
 
-                resposta = requests.get(url, headers=headers, timeout=60)
+        print(f"[CONV] total de atividades: {len(atividades)}")
 
-            if resposta.status_code == 200:
+        for atividade in reversed(atividades):
+            for attachment in (atividade.get("attachments") or []):
+                pdf = extrair_pdf_de_attachment(attachment, token)
+                if pdf:
+                    print(f"[CONV] PDF encontrado no histórico: {pdf['filename']}")
+                    return pdf
 
-                print(f"[PDF] arquivo encontrado: {nome_arquivo}")
-
-                return {
-                    "filename": nome_arquivo,
-                    "content": resposta.content,
-                    "mime_type": "application/pdf"
-                }
-
-            print(f"[PDF] falha download status={resposta.status_code} url={url}")
-
-        except Exception as e:
-            print(f"[PDF] erro ao baixar pdf: {e}")
+    except Exception as e:
+        print(f"[CONV] erro: {e}")
 
     return None
 
@@ -103,10 +178,6 @@ def webhook():
             "text": "Erro ao processar mensagem."
         }), 200
 
-    print(f"[DEBUG] attachments={dados.get('attachments', [])}")
-    print(f"[DEBUG] channelData={dados.get('channelData', {})}")
-    print(f"[DEBUG] entities={dados.get('entities', [])}")
-
     texto = extrair_texto(dados.get("text", ""))
 
     usuario = dados.get("from", {})
@@ -121,13 +192,18 @@ def webhook():
         f"texto={texto}"
     )
 
+    token = obter_token_bot()
+
+    pdf = extrair_pdf(dados, token)
+
+    if not pdf and token:
+        pdf = buscar_pdf_na_conversa(dados, token)
+
     payload = {
         "nome": nome,
         "aad_object_id": aad_object_id,
         "mensagem": texto
     }
-
-    pdf = extrair_pdf(dados)
 
     try:
 
