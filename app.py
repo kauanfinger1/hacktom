@@ -1,41 +1,21 @@
 from flask import Flask, request, jsonify
-import hmac
-import hashlib
-import base64
+import re
 
 app = Flask(__name__)
 
-# Cole aqui o token que o Teams vai gerar após criar o webhook
-TEAMS_TOKEN = "BeFK408U28ZZ53aXQKKIoq3zEv7GH+k1BsAb5tPVqdU="
-
-def verificar_assinatura(body: bytes, assinatura: str) -> bool:
-    try:
-        token_bytes = base64.b64decode(TEAMS_TOKEN)
-        mac = hmac.new(token_bytes, msg=body, digestmod=hashlib.sha256)
-        assinatura_gerada = base64.b64encode(mac.digest()).decode()
-        assinatura_recebida = assinatura.replace("HMAC ", "")
-        return hmac.compare_digest(assinatura_gerada, assinatura_recebida)
-    except Exception:
-        return False
-
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    # Verifica assinatura do Teams
-    assinatura = request.headers.get("Authorization", "")
-    if not verificar_assinatura(request.data, assinatura):
-        return jsonify({"error": "Token inválido"}), 401
-
     dados = request.json
+
+    if not dados:
+        return jsonify({"type": "message", "text": "Erro ao processar mensagem."}), 200
+
     texto = dados.get("text", "")
 
     # Remove a menção @NomeDoBot do texto
-    import re
     texto = re.sub(r"<at>[^<]+<\/at>", "", texto).strip()
 
-    # -----------------------------------------------
-    # SUA LÓGICA AQUI
     resposta = processar_mensagem(texto)
-    # -----------------------------------------------
 
     return jsonify({
         "type": "message",
@@ -59,7 +39,7 @@ def processar_mensagem(texto: str) -> str:
             "- **oi** → cumprimento"
         )
 
-    return f"Recebi sua mensagem: '{texto}'. Em que posso ajudar?"
+    return f"Recebi: '{texto}'. Em que posso ajudar?"
 
 @app.route("/", methods=["GET"])
 def health():
