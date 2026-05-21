@@ -13,6 +13,13 @@ def webhook():
 
     texto = dados.get("text", "")
     texto = re.sub(r"<at>[^<]+<\/at>", "", texto).strip()
+
+    # dados do usuário
+    usuario = dados.get("from", {})
+    nome = usuario.get("name", "Desconhecido")
+    email = usuario.get("email", None)
+    user_id = usuario.get("id", None)
+
     resposta = processar_mensagem(texto)
 
     return jsonify({
@@ -24,15 +31,22 @@ def processar_mensagem(texto: str) -> str:
     texto = texto.lower()
 
     if "oi" in texto or "olá" in texto or "hello" in texto:
-        return "Olá! Eu sou o bot Deployd. Como posso ajudar?"
+        return "Olá! {nome} Eu sou o bot Deployd. Como posso ajudar?"
 
     if "status" in texto:
         return "✅ Todos os sistemas operando normalmente."
+
+    if "meu email" in texto_lower or "meu e-mail" in texto_lower:
+    if email:
+        return f"Seu e-mail é: {email}"
+    else:
+        return f"Não consegui obter seu e-mail, {nome}. O Teams não enviou essa informação."
 
     if "ajuda" in texto or "help" in texto:
         return (
             "Comandos disponíveis:\n"
             "- **status** → verifica o status do sistema\n"
+            "- **meu email** → exibe seu e-mail\n"
             "- **ajuda** → exibe essa mensagem\n"
             "- **oi** → cumprimento"
         )
