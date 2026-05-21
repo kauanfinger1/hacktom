@@ -5,7 +5,7 @@ import requests
 
 app = Flask(__name__)
 
-IA_WEBHOOK_URL = "https://main-production-8edf.up.railway.app/webhook-test/5733cc81-06cf-4a08-b68b-8ad3d3b134b3"
+IA_WEBHOOK_URL = "https://main-production-8edf.up.railway.app/webhook/5733cc81-06cf-4a08-b68b-8ad3d3b134b3"
 
 def extrair_texto(texto: str) -> str:
     texto = re.sub(r'<a[^>]*href="mailto:([^"]+)"[^>]*>.*?</a>', r'\1', texto)
