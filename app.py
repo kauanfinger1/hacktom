@@ -5,13 +5,11 @@ import requests
 
 app = Flask(__name__)
 
-# Variáveis de ambiente do Railway
 TENANT_ID     = os.environ.get("AZURE_TENANT_ID")
 CLIENT_ID     = os.environ.get("AZURE_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("AZURE_CLIENT_SECRET")
 
 def get_access_token():
-    """Obtém token de acesso do Microsoft Graph API."""
     url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
     data = {
         "grant_type":    "client_credentials",
@@ -20,19 +18,25 @@ def get_access_token():
         "scope":         "https://graph.microsoft.com/.default"
     }
     response = requests.post(url, data=data)
-    return response.json().get("access_token")
+    result = response.json()
+    print(f"[TOKEN] status={response.status_code} erro={result.get('error')} descricao={result.get('error_description','')[:100]}")
+    return result.get("access_token")
 
 def get_user_email(user_id: str) -> str:
-    """Busca o e-mail do usuário pelo ID via Graph API."""
     try:
         token = get_access_token()
+        if not token:
+            print("[EMAIL] Token não obtido!")
+            return None
+
         headers = {"Authorization": f"Bearer {token}"}
         url = f"https://graph.microsoft.com/v1.0/users/{user_id}"
         response = requests.get(url, headers=headers)
         data = response.json()
+        print(f"[EMAIL] status={response.status_code} resposta={data}")
         return data.get("mail") or data.get("userPrincipalName", None)
     except Exception as e:
-        print(f"Erro ao buscar email: {e}")
+        print(f"[EMAIL] Exceção: {e}")
         return None
 
 @app.route("/webhook", methods=["POST"])
@@ -45,12 +49,12 @@ def webhook():
     texto = dados.get("text", "")
     texto = re.sub(r"<at>[^<]+<\/at>", "", texto).strip()
 
-    # Dados do usuário
     usuario  = dados.get("from", {})
     nome     = usuario.get("name", "Desconhecido")
     user_id  = usuario.get("id", None)
 
-    # Busca e-mail via Graph API
+    print(f"[WEBHOOK] nome={nome} user_id={user_id}")
+
     email = get_user_email(user_id) if user_id else None
 
     resposta = processar_mensagem(texto, nome, email)
