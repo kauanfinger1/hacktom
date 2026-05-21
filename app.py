@@ -63,13 +63,20 @@ def obter_token_bot(tenant_id=None):
 
 def baixar_pdf_por_url(url, token):
 
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
-
     try:
-        resp = requests.get(url, headers=headers, timeout=60)
+        resp = requests.get(url, timeout=60)
 
         if resp.status_code == 200:
             return resp.content
+
+        if resp.status_code in (401, 403) and token:
+            resp = requests.get(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=60
+            )
+            if resp.status_code == 200:
+                return resp.content
 
         print(f"[PDF] falha download status={resp.status_code} url={url}")
 
