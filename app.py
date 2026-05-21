@@ -20,8 +20,12 @@ def get_teams_token():
         "scope":         "https://api.botframework.com/.default"
     }
     response = requests.post(url, data=data)
-    token = response.json().get("access_token")
-    print(f"[TOKEN] status={response.status_code} obtido={'sim' if token else 'nao'}")
+    body = response.json()
+    token = body.get("access_token")
+    if not token:
+        print(f"[TOKEN] status={response.status_code} erro={body}")
+    else:
+        print(f"[TOKEN] status={response.status_code} obtido=sim")
     return token
 
 def extrair_texto(texto: str) -> str:
