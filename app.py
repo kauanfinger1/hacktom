@@ -6,7 +6,7 @@ import base64
 app = Flask(__name__)
 
 # Cole aqui o token que o Teams vai gerar após criar o webhook
-TEAMS_TOKEN = "seu_token_aqui"
+TEAMS_TOKEN = "BeFK408U28ZZ53aXQKKIoq3zEv7GH+k1BsAb5tPVqdU="
 
 def verificar_assinatura(body: bytes, assinatura: str) -> bool:
     try:
