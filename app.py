@@ -130,41 +130,84 @@ def extrair_pdf(dados, token=None):
     return None
 
 
-def buscar_pdf_na_conversa(dados, token):
+def obter_token_graph(tenant_id):
 
-    service_url = (dados.get("serviceUrl") or "").rstrip("/")
-    conversation_id = (dados.get("conversation") or {}).get("id", "")
-
-    if not service_url or not conversation_id or not token:
+    if not MICROSOFT_APP_ID or not MICROSOFT_APP_PASSWORD or not tenant_id:
         return None
 
-    print(f"[CONV] buscando atividades em {service_url}")
-
     try:
-        url = f"{service_url}/v3/conversations/{conversation_id}/activities"
-        resp = requests.get(
-            url,
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=30
+        resp = requests.post(
+            f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": MICROSOFT_APP_ID,
+                "client_secret": MICROSOFT_APP_PASSWORD,
+                "scope": "https://graph.microsoft.com/.default"
+            },
+            timeout=15
         )
 
-        if resp.status_code != 200:
-            print(f"[CONV] falha ao buscar atividades status={resp.status_code}")
-            return None
+        if resp.status_code == 200:
+            token = resp.json().get("access_token")
+            print(f"[GRAPH] token obtido tenant={tenant_id}")
+            return token
 
-        atividades = resp.json().get("activities", [])
-
-        print(f"[CONV] total de atividades: {len(atividades)}")
-
-        for atividade in reversed(atividades):
-            for attachment in (atividade.get("attachments") or []):
-                pdf = extrair_pdf_de_attachment(attachment, token)
-                if pdf:
-                    print(f"[CONV] PDF encontrado no histórico: {pdf['filename']}")
-                    return pdf
+        print(f"[GRAPH] falha token status={resp.status_code} body={resp.text}")
 
     except Exception as e:
-        print(f"[CONV] erro: {e}")
+        print(f"[GRAPH] erro token: {e}")
+
+    return None
+
+
+def buscar_pdf_no_canal(dados, graph_token):
+
+    channel_data = dados.get("channelData") or {}
+    team_id = channel_data.get("teamsTeamId", "")
+    channel_id = channel_data.get("teamsChannelId", "")
+
+    if not team_id or not channel_id or not graph_token:
+        return None
+
+    headers = {"Authorization": f"Bearer {graph_token}"}
+
+    print(f"[GRAPH] buscando mensagens do canal team={team_id[:20]}...")
+
+    try:
+        url = f"https://graph.microsoft.com/v1.0/teams/{team_id}/channels/{channel_id}/messages"
+        resp = requests.get(url, headers=headers, params={"$top": 20}, timeout=30)
+
+        if resp.status_code != 200:
+            print(f"[GRAPH] falha ao buscar mensagens status={resp.status_code} body={resp.text}")
+            return None
+
+        mensagens = resp.json().get("value", [])
+        print(f"[GRAPH] total de mensagens: {len(mensagens)}")
+
+        for mensagem in mensagens:
+            for attachment in (mensagem.get("attachments") or []):
+                content_type = (attachment.get("contentType") or "").lower()
+                nome_arquivo = attachment.get("name") or ""
+                url_arquivo = attachment.get("contentUrl") or ""
+
+                eh_pdf = nome_arquivo.lower().endswith(".pdf") or "pdf" in content_type
+
+                print(f"[GRAPH] attachment contentType={content_type} name={nome_arquivo} eh_pdf={eh_pdf}")
+
+                if not eh_pdf or not url_arquivo:
+                    continue
+
+                conteudo = baixar_pdf_por_url(url_arquivo, graph_token)
+                if conteudo:
+                    print(f"[GRAPH] PDF encontrado: {nome_arquivo}")
+                    return {
+                        "filename": nome_arquivo or "documento.pdf",
+                        "content": conteudo,
+                        "mime_type": "application/pdf"
+                    }
+
+    except Exception as e:
+        print(f"[GRAPH] erro: {e}")
 
     return None
 
@@ -197,12 +240,14 @@ def webhook():
 
     tenant_id = (dados.get("channelData") or {}).get("tenant", {}).get("id", "")
 
-    token = obter_token_bot(tenant_id) or obter_token_bot()
+    token_bot = obter_token_bot(tenant_id) or obter_token_bot()
 
-    pdf = extrair_pdf(dados, token)
+    pdf = extrair_pdf(dados, token_bot)
 
-    if not pdf and token:
-        pdf = buscar_pdf_na_conversa(dados, token)
+    if not pdf:
+        graph_token = obter_token_graph(MICROSOFT_TENANT_ID)
+        if graph_token:
+            pdf = buscar_pdf_no_canal(dados, graph_token)
 
     payload = {
         "nome": nome,
