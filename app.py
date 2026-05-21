@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 import re
 import os
 import requests
+import threading
+import json
 
 app = Flask(__name__)
 
@@ -219,19 +221,98 @@ def buscar_pdf_no_canal(dados, graph_token):
     return None
 
 
+def enviar_resposta_proativa(service_url, conversation_id, texto, tenant_id):
+
+    token = obter_token_bot(tenant_id) or obter_token_bot()
+
+    if not token:
+        print("[PROATIVO] sem token para enviar resposta")
+        return
+
+    url = f"{service_url.rstrip('/')}/v3/conversations/{conversation_id}/activities"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "type": "message",
+        "text": texto,
+        "textFormat": "markdown"
+    }
+
+    try:
+        resp = requests.post(url, json=body, headers=headers, timeout=30)
+        print(f"[PROATIVO] status={resp.status_code}")
+    except Exception as e:
+        print(f"[PROATIVO] erro: {e}")
+
+
+def processar_em_background(dados, service_url, conversation_id, tenant_id):
+
+    try:
+        texto = extrair_texto(dados.get("text", ""))
+        usuario = dados.get("from", {})
+        nome = usuario.get("name", "Desconhecido")
+        aad_object_id = usuario.get("aadObjectId", "")
+
+        token_bot = obter_token_bot(tenant_id) or obter_token_bot()
+
+        pdf = extrair_pdf(dados, token_bot)
+
+        if not pdf:
+            graph_token = obter_token_graph(MICROSOFT_TENANT_ID)
+            if graph_token:
+                pdf = buscar_pdf_no_canal(dados, graph_token)
+
+        payload = {
+            "nome": nome,
+            "aad_object_id": aad_object_id,
+            "mensagem": texto
+        }
+
+        if pdf:
+            resposta_ia = requests.post(
+                IA_WEBHOOK_URL,
+                data=payload,
+                files={"data": (pdf["filename"], pdf["content"], pdf["mime_type"])},
+                timeout=120
+            )
+        else:
+            resposta_ia = requests.post(
+                IA_WEBHOOK_URL,
+                json=payload,
+                timeout=120
+            )
+
+        try:
+            dados_ia = resposta_ia.json()
+        except Exception:
+            dados_ia = {"message": resposta_ia.text}
+
+        print(f"[IA] status={resposta_ia.status_code} dados={dados_ia}")
+
+        resposta_texto = (
+            dados_ia.get("response")
+            or dados_ia.get("text")
+            or dados_ia.get("message")
+            or "Sem resposta da IA."
+        )
+
+    except Exception as e:
+        print(f"[BG] erro: {e}")
+        resposta_texto = "Não consegui processar sua mensagem no momento."
+
+    enviar_resposta_proativa(service_url, conversation_id, resposta_texto, tenant_id)
+
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
 
     dados = request.json
 
     if not dados:
+        return "", 200
 
-        return jsonify({
-            "type": "message",
-            "text": "Erro ao processar mensagem."
-        }), 200
-
-    import json
     campos_relevantes = {
         "type": dados.get("type"),
         "text": dados.get("text"),
@@ -242,86 +323,26 @@ def webhook():
     }
     print(f"[PAYLOAD] {json.dumps(campos_relevantes, ensure_ascii=False)}")
 
-    texto = extrair_texto(dados.get("text", ""))
-
     usuario = dados.get("from", {})
-
     nome = usuario.get("name", "Desconhecido")
     aad_object_id = usuario.get("aadObjectId", "")
+    texto = extrair_texto(dados.get("text", ""))
+    tenant_id = (dados.get("channelData") or {}).get("tenant", {}).get("id", "")
+    service_url = dados.get("serviceUrl", "")
+    conversation_id = (dados.get("conversation") or {}).get("id", "")
 
     print(
-        f"[WEBHOOK] "
-        f"nome={nome} "
-        f"aad_object_id={aad_object_id} "
-        f"texto={texto}"
+        f"[WEBHOOK] nome={nome} aad_object_id={aad_object_id} texto={texto}"
     )
 
-    tenant_id = (dados.get("channelData") or {}).get("tenant", {}).get("id", "")
+    thread = threading.Thread(
+        target=processar_em_background,
+        args=(dados, service_url, conversation_id, tenant_id),
+        daemon=True
+    )
+    thread.start()
 
-    token_bot = obter_token_bot(tenant_id) or obter_token_bot()
-
-    pdf = extrair_pdf(dados, token_bot)
-
-    if not pdf:
-        graph_token = obter_token_graph(MICROSOFT_TENANT_ID)
-        if graph_token:
-            pdf = buscar_pdf_no_canal(dados, graph_token)
-
-    payload = {
-        "nome": nome,
-        "aad_object_id": aad_object_id,
-        "mensagem": texto
-    }
-
-    try:
-
-        if pdf:
-            resposta_ia = requests.post(
-                IA_WEBHOOK_URL,
-                data=payload,
-                files={"data": (pdf["filename"], pdf["content"], pdf["mime_type"])},
-                timeout=60
-            )
-        else:
-            resposta_ia = requests.post(
-                IA_WEBHOOK_URL,
-                json=payload,
-                timeout=60
-            )
-
-        try:
-            dados_ia = resposta_ia.json()
-        except Exception:
-            dados_ia = {
-                "message": resposta_ia.text
-            }
-
-        print(
-            f"[IA] "
-            f"status={resposta_ia.status_code} "
-            f"dados={dados_ia}"
-        )
-
-        resposta_texto = (
-            dados_ia.get("response")
-            or dados_ia.get("text")
-            or dados_ia.get("message")
-            or "Sem resposta da IA."
-        )
-
-    except Exception as e:
-
-        print(f"[IA] erro={e}")
-
-        resposta_texto = (
-            "Não consegui processar sua mensagem no momento."
-        )
-
-    return jsonify({
-        "type": "message",
-        "text": resposta_texto,
-        "textFormat": "markdown"
-    }), 200
+    return "", 200
 
 
 @app.route("/", methods=["GET"])
