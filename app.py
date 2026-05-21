@@ -103,6 +103,10 @@ def webhook():
             "text": "Erro ao processar mensagem."
         }), 200
 
+    print(f"[DEBUG] attachments={dados.get('attachments', [])}")
+    print(f"[DEBUG] channelData={dados.get('channelData', {})}")
+    print(f"[DEBUG] entities={dados.get('entities', [])}")
+
     texto = extrair_texto(dados.get("text", ""))
 
     usuario = dados.get("from", {})
