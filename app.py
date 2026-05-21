@@ -63,7 +63,7 @@ def obter_token_bot(tenant_id=None):
     return None
 
 
-def baixar_pdf_por_url(url, token):
+def baixar_pdf_por_url(url, *tokens):
 
     try:
         resp = requests.get(url, timeout=60)
@@ -71,14 +71,17 @@ def baixar_pdf_por_url(url, token):
         if resp.status_code == 200:
             return resp.content
 
-        if resp.status_code in (401, 403) and token:
-            resp = requests.get(
-                url,
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=60
-            )
-            if resp.status_code == 200:
-                return resp.content
+        if resp.status_code in (401, 403):
+            for token in tokens:
+                if not token:
+                    continue
+                resp = requests.get(
+                    url,
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=60
+                )
+                if resp.status_code == 200:
+                    return resp.content
 
         print(f"[PDF] falha download status={resp.status_code} url={url}")
 
@@ -88,7 +91,7 @@ def baixar_pdf_por_url(url, token):
     return None
 
 
-def extrair_pdf_de_attachment(attachment, token=None):
+def extrair_pdf_de_attachment(attachment, bot_token=None, graph_token=None):
 
     content_type = (attachment.get("contentType") or "").lower()
     nome_arquivo = attachment.get("name") or ""
@@ -103,7 +106,7 @@ def extrair_pdf_de_attachment(attachment, token=None):
         eh_pdf = file_type == "pdf" or nome_arquivo.lower().endswith(".pdf")
         if not eh_pdf or not url:
             return None
-        conteudo = baixar_pdf_por_url(url, token)
+        conteudo = baixar_pdf_por_url(url, bot_token, graph_token)
 
     elif content_type == "text/html":
         urls_html = re.findall(r'href=["\']([^"\']+)["\']', content_html)
@@ -111,7 +114,7 @@ def extrair_pdf_de_attachment(attachment, token=None):
         candidatos = ([url_content] if url_content else []) + urls_html
         print(f"[PDF] text/html candidatos={candidatos}")
         for url in candidatos:
-            conteudo = baixar_pdf_por_url(url, token)
+            conteudo = baixar_pdf_por_url(url, bot_token, graph_token)
             if conteudo and conteudo[:4] == b'%PDF':
                 nome = nome_arquivo or url.split("/")[-1].split("?")[0] or "documento.pdf"
                 print(f"[PDF] arquivo encontrado via HTML: {nome}")
@@ -123,7 +126,7 @@ def extrair_pdf_de_attachment(attachment, token=None):
         eh_pdf = "pdf" in content_type or nome_arquivo.lower().endswith(".pdf")
         if not eh_pdf or not url:
             return None
-        conteudo = baixar_pdf_por_url(url, token)
+        conteudo = baixar_pdf_por_url(url, bot_token, graph_token)
 
     if conteudo:
         print(f"[PDF] arquivo encontrado: {nome_arquivo}")
@@ -136,7 +139,7 @@ def extrair_pdf_de_attachment(attachment, token=None):
     return None
 
 
-def extrair_pdf(dados, token=None):
+def extrair_pdf(dados, bot_token=None, graph_token=None):
 
     attachments = dados.get("attachments", [])
 
@@ -147,7 +150,7 @@ def extrair_pdf(dados, token=None):
         nome_arquivo = attachment.get("name") or ""
         print(f"[PDF] anexo[{i}] contentType={content_type} name={nome_arquivo}")
 
-        pdf = extrair_pdf_de_attachment(attachment, token)
+        pdf = extrair_pdf_de_attachment(attachment, bot_token, graph_token)
         if pdf:
             return pdf
 
@@ -271,13 +274,12 @@ def processar_em_background(dados, service_url, conversation_id, tenant_id):
         aad_object_id = usuario.get("aadObjectId", "")
 
         token_bot = obter_token_bot(tenant_id) or obter_token_bot()
+        graph_token = obter_token_graph(tenant_id or MICROSOFT_TENANT_ID)
 
-        pdf = extrair_pdf(dados, token_bot)
+        pdf = extrair_pdf(dados, token_bot, graph_token)
 
-        if not pdf:
-            graph_token = obter_token_graph(MICROSOFT_TENANT_ID)
-            if graph_token:
-                pdf = buscar_pdf_no_canal(dados, graph_token)
+        if not pdf and graph_token:
+            pdf = buscar_pdf_no_canal(dados, graph_token)
 
         payload = {
             "nome": nome,
