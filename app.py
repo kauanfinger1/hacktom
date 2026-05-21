@@ -9,6 +9,7 @@ IA_WEBHOOK_URL = "https://primary-production-f46c1.up.railway.app/webhook/10ba38
 
 MICROSOFT_APP_ID = os.environ.get("MICROSOFT_APP_ID", "")
 MICROSOFT_APP_PASSWORD = os.environ.get("MICROSOFT_APP_PASSWORD", "")
+MICROSOFT_TENANT_ID = os.environ.get("MICROSOFT_TENANT_ID", "botframework.com")
 
 
 def extrair_texto(texto: str) -> str:
@@ -27,15 +28,17 @@ def extrair_texto(texto: str) -> str:
     return texto
 
 
-def obter_token_bot():
+def obter_token_bot(tenant_id=None):
 
     if not MICROSOFT_APP_ID or not MICROSOFT_APP_PASSWORD:
         print("[TOKEN] MICROSOFT_APP_ID ou MICROSOFT_APP_PASSWORD não configurados")
         return None
 
+    tenant = tenant_id or MICROSOFT_TENANT_ID
+
     try:
         resp = requests.post(
-            "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token",
+            f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token",
             data={
                 "grant_type": "client_credentials",
                 "client_id": MICROSOFT_APP_ID,
@@ -47,10 +50,10 @@ def obter_token_bot():
 
         if resp.status_code == 200:
             token = resp.json().get("access_token")
-            print("[TOKEN] token obtido com sucesso")
+            print(f"[TOKEN] token obtido com sucesso tenant={tenant}")
             return token
 
-        print(f"[TOKEN] falha ao obter token status={resp.status_code} body={resp.text}")
+        print(f"[TOKEN] falha tenant={tenant} status={resp.status_code} body={resp.text}")
 
     except Exception as e:
         print(f"[TOKEN] erro: {e}")
@@ -192,7 +195,9 @@ def webhook():
         f"texto={texto}"
     )
 
-    token = obter_token_bot()
+    tenant_id = (dados.get("channelData") or {}).get("tenant", {}).get("id", "")
+
+    token = obter_token_bot(tenant_id) or obter_token_bot()
 
     pdf = extrair_pdf(dados, token)
 
