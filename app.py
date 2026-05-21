@@ -7,48 +7,70 @@ app = Flask(__name__)
 
 IA_WEBHOOK_URL = "https://primary-production-f46c1.up.railway.app/webhook/10ba380d-3a85-4fa9-a556-9673c294d40d"
 
+
 def extrair_texto(texto: str) -> str:
-    texto = re.sub(r'<a[^>]*href="mailto:([^"]+)"[^>]*>.*?</a>', r'\1', texto)
+
+    texto = re.sub(
+        r'<a[^>]*href="mailto:([^"]+)"[^>]*>.*?</a>',
+        r'\1',
+        texto
+    )
+
     texto = re.sub(r"<at>[^<]+<\/at>", "", texto)
     texto = re.sub(r"<[^>]+>", "", texto)
+
     texto = texto.replace("&nbsp;", " ").strip()
+
     return texto
 
 
 def extrair_pdf(dados):
+
     attachments = dados.get("attachments", [])
 
     for attachment in attachments:
-        content_type = attachment.get("contentType", "").lower()
-        nome_arquivo = attachment.get("name", "")
-        url = attachment.get("contentUrl")
 
-        if (
+        content_type = (attachment.get("contentType") or "").lower()
+        nome_arquivo = attachment.get("name") or ""
+        url = attachment.get("contentUrl") or ""
+
+        eh_pdf = (
             "pdf" in content_type
             or nome_arquivo.lower().endswith(".pdf")
-        ):
-            try:
-                headers = {}
+        )
 
-                auth = request.headers.get("Authorization")
-                if auth:
-                    headers["Authorization"] = auth
+        if not eh_pdf:
+            continue
 
-                resposta = requests.get(
-                    url,
-                    headers=headers,
-                    timeout=60
-                )
+        try:
 
-                if resposta.status_code == 200:
-                    return {
-                        "filename": nome_arquivo,
-                        "content": resposta.content,
-                        "mime_type": "application/pdf"
-                    }
+            headers = {}
 
-            except Exception as e:
-                print(f"[PDF] erro ao baixar pdf: {e}")
+            auth = request.headers.get("Authorization")
+
+            if auth:
+                headers["Authorization"] = auth
+
+            resposta = requests.get(
+                url,
+                headers=headers,
+                timeout=60
+            )
+
+            if resposta.status_code == 200:
+
+                print(f"[PDF] arquivo encontrado: {nome_arquivo}")
+
+                return {
+                    "filename": nome_arquivo,
+                    "content": resposta.content,
+                    "mime_type": "application/pdf"
+                }
+
+            print(f"[PDF] falha download status={resposta.status_code}")
+
+        except Exception as e:
+            print(f"[PDF] erro ao baixar pdf: {e}")
 
     return None
 
@@ -59,6 +81,7 @@ def webhook():
     dados = request.json
 
     if not dados:
+
         return jsonify({
             "type": "message",
             "text": "Erro ao processar mensagem."
@@ -67,10 +90,16 @@ def webhook():
     texto = extrair_texto(dados.get("text", ""))
 
     usuario = dados.get("from", {})
+
     nome = usuario.get("name", "Desconhecido")
     aad_object_id = usuario.get("aadObjectId", "")
 
-    print(f"[WEBHOOK] nome={nome} aad_object_id={aad_object_id} texto={texto}")
+    print(
+        f"[WEBHOOK] "
+        f"nome={nome} "
+        f"aad_object_id={aad_object_id} "
+        f"texto={texto}"
+    )
 
     payload = {
         "nome": nome,
@@ -110,13 +139,20 @@ def webhook():
             )
 
         try:
+
             dados_ia = resposta_ia.json()
+
         except Exception:
+
             dados_ia = {
                 "message": resposta_ia.text
             }
 
-        print(f"[IA] status={resposta_ia.status_code} dados={dados_ia}")
+        print(
+            f"[IA] "
+            f"status={resposta_ia.status_code} "
+            f"dados={dados_ia}"
+        )
 
         resposta_texto = (
             dados_ia.get("response")
@@ -126,8 +162,12 @@ def webhook():
         )
 
     except Exception as e:
-        print(f"[IA] Erro: {e}")
-        resposta_texto = "Não consegui processar sua mensagem no momento."
+
+        print(f"[IA] erro={e}")
+
+        resposta_texto = (
+            "Não consegui processar sua mensagem no momento."
+        )
 
     return jsonify({
         "type": "message",
@@ -138,6 +178,7 @@ def webhook():
 
 @app.route("/", methods=["GET"])
 def health():
+
     return jsonify({
         "status": "online",
         "bot": "Deployd"
@@ -145,5 +186,11 @@ def health():
 
 
 if __name__ == "__main__":
+
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False
+    )
