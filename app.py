@@ -92,23 +92,38 @@ def extrair_pdf_de_attachment(attachment, token=None):
 
     content_type = (attachment.get("contentType") or "").lower()
     nome_arquivo = attachment.get("name") or ""
-    content_info = attachment.get("content") or {}
+    content_raw = attachment.get("content") or {}
 
-    if isinstance(content_info, str):
-        content_info = {}
+    content_html = content_raw if isinstance(content_raw, str) else ""
+    content_info = content_raw if isinstance(content_raw, dict) else {}
 
     if content_type == "application/vnd.microsoft.teams.file.download.info":
         url = content_info.get("downloadUrl") or attachment.get("contentUrl") or ""
         file_type = (content_info.get("fileType") or "").lower()
         eh_pdf = file_type == "pdf" or nome_arquivo.lower().endswith(".pdf")
+        if not eh_pdf or not url:
+            return None
+        conteudo = baixar_pdf_por_url(url, token)
+
+    elif content_type == "text/html":
+        urls_html = re.findall(r'href=["\']([^"\']+)["\']', content_html)
+        url_content = attachment.get("contentUrl") or ""
+        candidatos = ([url_content] if url_content else []) + urls_html
+        print(f"[PDF] text/html candidatos={candidatos}")
+        for url in candidatos:
+            conteudo = baixar_pdf_por_url(url, token)
+            if conteudo and conteudo[:4] == b'%PDF':
+                nome = nome_arquivo or url.split("/")[-1].split("?")[0] or "documento.pdf"
+                print(f"[PDF] arquivo encontrado via HTML: {nome}")
+                return {"filename": nome, "content": conteudo, "mime_type": "application/pdf"}
+        return None
+
     else:
         url = attachment.get("contentUrl") or ""
         eh_pdf = "pdf" in content_type or nome_arquivo.lower().endswith(".pdf")
-
-    if not eh_pdf or not url:
-        return None
-
-    conteudo = baixar_pdf_por_url(url, token)
+        if not eh_pdf or not url:
+            return None
+        conteudo = baixar_pdf_por_url(url, token)
 
     if conteudo:
         print(f"[PDF] arquivo encontrado: {nome_arquivo}")
