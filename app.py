@@ -107,43 +107,61 @@ def webhook():
         "mensagem": texto
     }
 
-    pdf_data = extrair_pdf(dados)
+  def extrair_pdf(dados):
 
-    try:
+    attachments = dados.get("attachments", [])
 
-        # COM PDF
-        if pdf_data:
+    for attachment in attachments:
 
-            files = {
-                "data": (
-                    pdf_data["filename"],
-                    pdf_data["content"],
-                    pdf_data["mime_type"]
-                )
-            }
+        content_type = (attachment.get("contentType") or "").lower()
+        nome_arquivo = attachment.get("name") or ""
+        url = attachment.get("contentUrl") or ""
 
-            resposta_ia = requests.post(
-                IA_WEBHOOK_URL,
-                data=payload,
-                files=files,
-                timeout=120
-            )
+        eh_pdf = (
+            "pdf" in content_type
+            or nome_arquivo.lower().endswith(".pdf")
+        )
 
-        # SEM PDF
-        else:
+        if not eh_pdf:
+            continue
 
-            resposta_ia = requests.post(
-                IA_WEBHOOK_URL,
-                json=payload,
-                timeout=120
-            )
+        if not url:
+            print("[PDF] URL não encontrada no anexo")
+            continue
 
         try:
 
-            dados_ia = resposta_ia.json()
+            # Tenta primeiro sem token (URLs pré-assinadas do Teams não precisam)
+            resposta = requests.get(url, timeout=60)
 
-        except Exception:
+            # Se der 401/403, tenta com o token do serviceUrl via Bot Framework
+            if resposta.status_code in (401, 403):
 
+                service_url = dados.get("serviceUrl", "")
+                bot_token = dados.get("channelData", {}).get("token", "")
+
+                headers = {}
+                if bot_token:
+                    headers["Authorization"] = f"Bearer {bot_token}"
+
+                resposta = requests.get(url, headers=headers, timeout=60)
+
+            if resposta.status_code == 200:
+
+                print(f"[PDF] arquivo encontrado: {nome_arquivo}")
+
+                return {
+                    "filename": nome_arquivo,
+                    "content": resposta.content,
+                    "mime_type": "application/pdf"
+                }
+
+            print(f"[PDF] falha download status={resposta.status_code} url={url}")
+
+        except Exception as e:
+            print(f"[PDF] erro ao baixar pdf: {e}")
+
+    return None
             dados_ia = {
                 "message": resposta_ia.text
             }
