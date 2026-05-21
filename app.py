@@ -1,50 +1,8 @@
 from flask import Flask, request, jsonify
 import re
 import os
-import requests
 
 app = Flask(__name__)
-
-TENANT_ID     = os.environ.get("AZURE_TENANT_ID")
-CLIENT_ID     = os.environ.get("AZURE_CLIENT_ID")
-CLIENT_SECRET = os.environ.get("AZURE_CLIENT_SECRET")
-
-def get_access_token():
-    url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
-    data = {
-        "grant_type":    "client_credentials",
-        "client_id":     CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "scope":         "https://graph.microsoft.com/.default"
-    }
-    response = requests.post(url, data=data)
-    return response.json().get("access_token")
-
-def get_user_email_by_name(nome: str) -> str:
-    """Busca o e-mail do usuário pelo nome via Graph API."""
-    try:
-        token = get_access_token()
-        if not token:
-            print("[EMAIL] Token não obtido!")
-            return None
-
-        headers = {"Authorization": f"Bearer {token}"}
-
-        # Busca pelo nome do usuário
-        url = f"https://graph.microsoft.com/v1.0/users?$filter=displayName eq '{nome}'&$select=mail,userPrincipalName,displayName"
-        response = requests.get(url, headers=headers)
-        data = response.json()
-        print(f"[EMAIL] status={response.status_code} resposta={data}")
-
-        usuarios = data.get("value", [])
-        if usuarios:
-            user = usuarios[0]
-            return user.get("mail") or user.get("userPrincipalName")
-
-        return None
-    except Exception as e:
-        print(f"[EMAIL] Exceção: {e}")
-        return None
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -53,15 +11,17 @@ def webhook():
     if not dados:
         return jsonify({"type": "message", "text": "Erro ao processar mensagem."}), 200
 
+    # Loga o payload completo para análise
+    print(f"[PAYLOAD COMPLETO] {dados}")
+
     texto = dados.get("text", "")
     texto = re.sub(r"<at>[^<]+<\/at>", "", texto).strip()
 
     usuario  = dados.get("from", {})
     nome     = usuario.get("name", "Desconhecido")
+    email    = usuario.get("email") or usuario.get("userPrincipalName") or dados.get("channelData", {}).get("tenant", {}).get("id")
 
-    print(f"[WEBHOOK] nome={nome}")
-
-    email = get_user_email_by_name(nome)
+    print(f"[USUARIO] {usuario}")
 
     resposta = processar_mensagem(texto, nome, email)
 
