@@ -9,10 +9,11 @@ app = Flask(__name__)
 IA_WEBHOOK_URL = "https://main-production-8edf.up.railway.app/webhook/5733cc81-06cf-4a08-b68b-8ad3d3b134b3"
 CLIENT_ID      = os.environ.get("AZURE_CLIENT_ID")
 CLIENT_SECRET  = os.environ.get("AZURE_CLIENT_SECRET")
+TENANT_ID      = os.environ.get("AZURE_TENANT_ID", "botframework.com")
 
 def get_teams_token():
     """Obtém token para chamar a API do Teams."""
-    url = "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token"
+    url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
     data = {
         "grant_type":    "client_credentials",
         "client_id":     CLIENT_ID,
