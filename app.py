@@ -50,7 +50,7 @@ def obter_token_bot():
             print("[TOKEN] token obtido com sucesso")
             return token
 
-        print(f"[TOKEN] falha ao obter token status={resp.status_code}")
+        print(f"[TOKEN] falha ao obter token status={resp.status_code} body={resp.text}")
 
     except Exception as e:
         print(f"[TOKEN] erro: {e}")
