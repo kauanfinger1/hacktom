@@ -224,6 +224,17 @@ def webhook():
             "text": "Erro ao processar mensagem."
         }), 200
 
+    import json
+    campos_relevantes = {
+        "type": dados.get("type"),
+        "text": dados.get("text"),
+        "attachments": dados.get("attachments"),
+        "channelData": dados.get("channelData"),
+        "value": dados.get("value"),
+        "entities": dados.get("entities"),
+    }
+    print(f"[PAYLOAD] {json.dumps(campos_relevantes, ensure_ascii=False)}")
+
     texto = extrair_texto(dados.get("text", ""))
 
     usuario = dados.get("from", {})
