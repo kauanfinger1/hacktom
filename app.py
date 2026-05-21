@@ -36,7 +36,7 @@ def extrair_texto(texto: str) -> str:
     texto = texto.replace("&nbsp;", " ").strip()
     return texto
 
-def chamar_ia_e_responder(payload, service_url, conversation_id, activity_id, bot, user):
+def chamar_ia_e_responder(payload, service_url, conversation_id, activity_id, bot, user, channel_data):
     try:
         resposta_ia = requests.post(IA_WEBHOOK_URL, json=payload, timeout=30)
         dados_ia = resposta_ia.json()
@@ -57,7 +57,8 @@ def chamar_ia_e_responder(payload, service_url, conversation_id, activity_id, bo
             "conversation": {"id": conversation_id},
             "replyToId": activity_id,
             "text": resposta_texto,
-            "textFormat": "markdown"
+            "textFormat": "markdown",
+            "channelData": channel_data
         }
         r = requests.post(url, json=body, headers=headers, timeout=10)
         print(f"[TEAMS] status={r.status_code} resposta={r.text}")
@@ -80,6 +81,7 @@ def webhook():
     activity_id     = dados.get("id", "")
     bot             = dados.get("recipient", {})
     user            = dados.get("from", {})
+    channel_data    = dados.get("channelData", {})
 
     print(f"[WEBHOOK] nome={nome} aad_object_id={aad_object_id} texto={texto}")
 
@@ -91,7 +93,7 @@ def webhook():
 
     thread = threading.Thread(
         target=chamar_ia_e_responder,
-        args=(payload, service_url, conversation_id, activity_id, bot, user)
+        args=(payload, service_url, conversation_id, activity_id, bot, user, channel_data)
     )
     thread.start()
 
