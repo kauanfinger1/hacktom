@@ -28,16 +28,29 @@ def extrair_pdf(dados):
 
     attachments = dados.get("attachments", [])
 
-    for attachment in attachments:
+    print(f"[PDF] total de anexos: {len(attachments)}")
+
+    for i, attachment in enumerate(attachments):
 
         content_type = (attachment.get("contentType") or "").lower()
         nome_arquivo = attachment.get("name") or ""
-        url = attachment.get("contentUrl") or ""
+        content_info = attachment.get("content") or {}
 
-        eh_pdf = (
-            "pdf" in content_type
-            or nome_arquivo.lower().endswith(".pdf")
-        )
+        print(f"[PDF] anexo[{i}] contentType={content_type} name={nome_arquivo} content={content_info}")
+
+        # Teams envia arquivos com contentType especial; URL fica em content.downloadUrl
+        if content_type == "application/vnd.microsoft.teams.file.download.info":
+            url = content_info.get("downloadUrl") or attachment.get("contentUrl") or ""
+            file_type = (content_info.get("fileType") or "").lower()
+            eh_pdf = file_type == "pdf" or nome_arquivo.lower().endswith(".pdf")
+        else:
+            url = attachment.get("contentUrl") or ""
+            eh_pdf = (
+                "pdf" in content_type
+                or nome_arquivo.lower().endswith(".pdf")
+            )
+
+        print(f"[PDF] anexo[{i}] url={url} eh_pdf={eh_pdf}")
 
         if not eh_pdf:
             continue
