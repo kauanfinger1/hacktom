@@ -31,14 +31,14 @@ def processar_mensagem(texto: str, nome: str, email: str) -> str:
     texto_lower = texto.lower()
 
     if "oi" in texto_lower or "olá" in texto_lower or "hello" in texto_lower:
-        return "Olá! {nome} Eu sou o bot Deployd. Como posso ajudar?"
+        return f"Olá {nome}! Eu sou o bot Deployd. Como posso ajudar?"
 
     if "status" in texto_lower:
         return "✅ Todos os sistemas operando normalmente."
 
     if "meu email" in texto_lower or "meu e-mail" in texto_lower:
-    if email:
-        return f"Seu e-mail é: {email}"
+        if email:
+            return f"Seu e-mail é: {email}"
     else:
         return f"Não consegui obter seu e-mail, {nome}. O Teams não enviou essa informação."
 
