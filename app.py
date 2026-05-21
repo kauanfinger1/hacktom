@@ -101,6 +101,8 @@ def webhook():
 def health():
     return jsonify({"status": "online", "bot": "Deployd"}), 200
 
+print(f"[STARTUP] CLIENT_ID={CLIENT_ID} TENANT_ID={TENANT_ID} SECRET={'***' if CLIENT_SECRET else 'NAO_DEFINIDO'}")
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
