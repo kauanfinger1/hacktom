@@ -42,20 +42,23 @@ def extrair_pdf(dados):
         if not eh_pdf:
             continue
 
+        if not url:
+            print("[PDF] URL não encontrada no anexo")
+            continue
+
         try:
 
-            headers = {}
+            resposta = requests.get(url, timeout=60)
 
-            auth = request.headers.get("Authorization")
+            if resposta.status_code in (401, 403):
 
-            if auth:
-                headers["Authorization"] = auth
+                bot_token = dados.get("channelData", {}).get("token", "")
 
-            resposta = requests.get(
-                url,
-                headers=headers,
-                timeout=60
-            )
+                headers = {}
+                if bot_token:
+                    headers["Authorization"] = f"Bearer {bot_token}"
+
+                resposta = requests.get(url, headers=headers, timeout=60)
 
             if resposta.status_code == 200:
 
@@ -67,7 +70,7 @@ def extrair_pdf(dados):
                     "mime_type": "application/pdf"
                 }
 
-            print(f"[PDF] falha download status={resposta.status_code}")
+            print(f"[PDF] falha download status={resposta.status_code} url={url}")
 
         except Exception as e:
             print(f"[PDF] erro ao baixar pdf: {e}")
@@ -107,61 +110,27 @@ def webhook():
         "mensagem": texto
     }
 
-  def extrair_pdf(dados):
+    pdf = extrair_pdf(dados)
 
-    attachments = dados.get("attachments", [])
+    try:
 
-    for attachment in attachments:
-
-        content_type = (attachment.get("contentType") or "").lower()
-        nome_arquivo = attachment.get("name") or ""
-        url = attachment.get("contentUrl") or ""
-
-        eh_pdf = (
-            "pdf" in content_type
-            or nome_arquivo.lower().endswith(".pdf")
-        )
-
-        if not eh_pdf:
-            continue
-
-        if not url:
-            print("[PDF] URL não encontrada no anexo")
-            continue
+        if pdf:
+            resposta_ia = requests.post(
+                IA_WEBHOOK_URL,
+                data=payload,
+                files={"file": (pdf["filename"], pdf["content"], pdf["mime_type"])},
+                timeout=60
+            )
+        else:
+            resposta_ia = requests.post(
+                IA_WEBHOOK_URL,
+                json=payload,
+                timeout=60
+            )
 
         try:
-
-            # Tenta primeiro sem token (URLs pré-assinadas do Teams não precisam)
-            resposta = requests.get(url, timeout=60)
-
-            # Se der 401/403, tenta com o token do serviceUrl via Bot Framework
-            if resposta.status_code in (401, 403):
-
-                service_url = dados.get("serviceUrl", "")
-                bot_token = dados.get("channelData", {}).get("token", "")
-
-                headers = {}
-                if bot_token:
-                    headers["Authorization"] = f"Bearer {bot_token}"
-
-                resposta = requests.get(url, headers=headers, timeout=60)
-
-            if resposta.status_code == 200:
-
-                print(f"[PDF] arquivo encontrado: {nome_arquivo}")
-
-                return {
-                    "filename": nome_arquivo,
-                    "content": resposta.content,
-                    "mime_type": "application/pdf"
-                }
-
-            print(f"[PDF] falha download status={resposta.status_code} url={url}")
-
-        except Exception as e:
-            print(f"[PDF] erro ao baixar pdf: {e}")
-
-    return None
+            dados_ia = resposta_ia.json()
+        except Exception:
             dados_ia = {
                 "message": resposta_ia.text
             }
