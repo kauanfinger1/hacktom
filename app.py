@@ -31,8 +31,7 @@ def extrair_texto(texto: str) -> str:
     texto = texto.replace("&nbsp;", " ").strip()
     return texto
 
-def chamar_ia_e_responder(payload, service_url, conversation_id):
-    """Chama a IA em background e envia resposta ao Teams."""
+def chamar_ia_e_responder(payload, service_url, conversation_id, activity_id, bot, user):
     try:
         resposta_ia = requests.post(IA_WEBHOOK_URL, json=payload, timeout=30)
         dados_ia = resposta_ia.json()
@@ -42,12 +41,20 @@ def chamar_ia_e_responder(payload, service_url, conversation_id):
         print(f"[IA] Erro: {e}")
         resposta_texto = "Não consegui processar sua mensagem no momento."
 
-    # Obtém token e envia resposta ao Teams
     try:
         token = get_teams_token()
-        url = f"{service_url}v3/conversations/{conversation_id}/activities"
+        url = f"{service_url.rstrip('/')}/v3/conversations/{conversation_id}/activities"
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-        r = requests.post(url, json={"type": "message", "text": resposta_texto}, headers=headers, timeout=10)
+        body = {
+            "type": "message",
+            "from": bot,
+            "recipient": user,
+            "conversation": {"id": conversation_id},
+            "replyToId": activity_id,
+            "text": resposta_texto,
+            "textFormat": "markdown"
+        }
+        r = requests.post(url, json=body, headers=headers, timeout=10)
         print(f"[TEAMS] status={r.status_code} resposta={r.text}")
     except Exception as e:
         print(f"[TEAMS] Erro ao enviar resposta: {e}")
@@ -65,6 +72,9 @@ def webhook():
     aad_object_id   = usuario.get("aadObjectId", "")
     service_url     = dados.get("serviceUrl", "")
     conversation_id = dados.get("conversation", {}).get("id", "")
+    activity_id     = dados.get("id", "")
+    bot             = dados.get("recipient", {})
+    user            = dados.get("from", {})
 
     print(f"[WEBHOOK] nome={nome} aad_object_id={aad_object_id} texto={texto}")
 
@@ -74,10 +84,13 @@ def webhook():
         "mensagem": texto
     }
 
-    thread = threading.Thread(target=chamar_ia_e_responder, args=(payload, service_url, conversation_id))
+    thread = threading.Thread(
+        target=chamar_ia_e_responder,
+        args=(payload, service_url, conversation_id, activity_id, bot, user)
+    )
     thread.start()
 
-    return jsonify({"type": "message", "text": "⏳ Processando..."}), 200
+    return jsonify({"status": "ok"}), 200
 
 @app.route("/", methods=["GET"])
 def health():
