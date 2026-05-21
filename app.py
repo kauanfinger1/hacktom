@@ -118,7 +118,7 @@ def webhook():
             resposta_ia = requests.post(
                 IA_WEBHOOK_URL,
                 data=payload,
-                files={"file": (pdf["filename"], pdf["content"], pdf["mime_type"])},
+                files={"data": (pdf["filename"], pdf["content"], pdf["mime_type"])},
                 timeout=60
             )
         else:
