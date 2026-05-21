@@ -18,11 +18,10 @@ def get_access_token():
         "scope":         "https://graph.microsoft.com/.default"
     }
     response = requests.post(url, data=data)
-    result = response.json()
-    print(f"[TOKEN] status={response.status_code} erro={result.get('error')} descricao={result.get('error_description','')[:100]}")
-    return result.get("access_token")
+    return response.json().get("access_token")
 
-def get_user_email(user_id: str) -> str:
+def get_user_email_by_name(nome: str) -> str:
+    """Busca o e-mail do usuário pelo nome via Graph API."""
     try:
         token = get_access_token()
         if not token:
@@ -30,11 +29,19 @@ def get_user_email(user_id: str) -> str:
             return None
 
         headers = {"Authorization": f"Bearer {token}"}
-        url = f"https://graph.microsoft.com/v1.0/users/{user_id}"
+
+        # Busca pelo nome do usuário
+        url = f"https://graph.microsoft.com/v1.0/users?$filter=displayName eq '{nome}'&$select=mail,userPrincipalName,displayName"
         response = requests.get(url, headers=headers)
         data = response.json()
         print(f"[EMAIL] status={response.status_code} resposta={data}")
-        return data.get("mail") or data.get("userPrincipalName", None)
+
+        usuarios = data.get("value", [])
+        if usuarios:
+            user = usuarios[0]
+            return user.get("mail") or user.get("userPrincipalName")
+
+        return None
     except Exception as e:
         print(f"[EMAIL] Exceção: {e}")
         return None
@@ -51,11 +58,10 @@ def webhook():
 
     usuario  = dados.get("from", {})
     nome     = usuario.get("name", "Desconhecido")
-    user_id  = usuario.get("id", None)
 
-    print(f"[WEBHOOK] nome={nome} user_id={user_id}")
+    print(f"[WEBHOOK] nome={nome}")
 
-    email = get_user_email(user_id) if user_id else None
+    email = get_user_email_by_name(nome)
 
     resposta = processar_mensagem(texto, nome, email)
 
