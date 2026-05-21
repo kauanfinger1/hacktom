@@ -14,6 +14,7 @@ def extrair_texto(texto: str) -> str:
     texto = texto.replace("&nbsp;", " ").strip()
     return texto
 
+
 def extrair_pdf(dados):
     attachments = dados.get("attachments", [])
 
@@ -51,8 +52,10 @@ def extrair_pdf(dados):
 
     return None
 
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
+
     dados = request.json
 
     if not dados:
@@ -79,7 +82,7 @@ def webhook():
 
     try:
 
-        # SE TIVER PDF
+        # COM PDF
         if pdf_data:
 
             files = {
@@ -106,7 +109,12 @@ def webhook():
                 timeout=120
             )
 
-        dados_ia = resposta_ia.json()
+        try:
+            dados_ia = resposta_ia.json()
+        except Exception:
+            dados_ia = {
+                "message": resposta_ia.text
+            }
 
         print(f"[IA] status={resposta_ia.status_code} dados={dados_ia}")
 
@@ -127,12 +135,14 @@ def webhook():
         "textFormat": "markdown"
     }), 200
 
+
 @app.route("/", methods=["GET"])
 def health():
     return jsonify({
         "status": "online",
         "bot": "Deployd"
     }), 200
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
