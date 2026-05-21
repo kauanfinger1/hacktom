@@ -7,6 +7,22 @@ import threading
 app = Flask(__name__)
 
 IA_WEBHOOK_URL = "https://main-production-8edf.up.railway.app/webhook/5733cc81-06cf-4a08-b68b-8ad3d3b134b3"
+CLIENT_ID      = os.environ.get("AZURE_CLIENT_ID")
+CLIENT_SECRET  = os.environ.get("AZURE_CLIENT_SECRET")
+
+def get_teams_token():
+    """Obtém token para chamar a API do Teams."""
+    url = "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token"
+    data = {
+        "grant_type":    "client_credentials",
+        "client_id":     CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "scope":         "https://api.botframework.com/.default"
+    }
+    response = requests.post(url, data=data)
+    token = response.json().get("access_token")
+    print(f"[TOKEN] status={response.status_code} obtido={'sim' if token else 'nao'}")
+    return token
 
 def extrair_texto(texto: str) -> str:
     texto = re.sub(r'<a[^>]*href="mailto:([^"]+)"[^>]*>.*?</a>', r'\1', texto)
@@ -26,11 +42,13 @@ def chamar_ia_e_responder(payload, service_url, conversation_id):
         print(f"[IA] Erro: {e}")
         resposta_texto = "Não consegui processar sua mensagem no momento."
 
-    # Envia resposta ao Teams via serviceUrl
+    # Obtém token e envia resposta ao Teams
     try:
+        token = get_teams_token()
         url = f"{service_url}v3/conversations/{conversation_id}/activities"
-        r = requests.post(url, json={"type": "message", "text": resposta_texto}, timeout=10)
-        print(f"[TEAMS] status={r.status_code}")
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        r = requests.post(url, json={"type": "message", "text": resposta_texto}, headers=headers, timeout=10)
+        print(f"[TEAMS] status={r.status_code} resposta={r.text}")
     except Exception as e:
         print(f"[TEAMS] Erro ao enviar resposta: {e}")
 
@@ -56,11 +74,9 @@ def webhook():
         "mensagem": texto
     }
 
-    # Processa em background para não estourar o timeout do Teams
     thread = threading.Thread(target=chamar_ia_e_responder, args=(payload, service_url, conversation_id))
     thread.start()
 
-    # Responde imediatamente ao Teams
     return jsonify({"type": "message", "text": "⏳ Processando..."}), 200
 
 @app.route("/", methods=["GET"])
