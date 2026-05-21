@@ -5,8 +5,19 @@ import os
 app = Flask(__name__)
 
 # Dicionário em memória: aadObjectId -> email
-# Para persistência real, use um banco de dados
 usuarios_emails = {}
+
+def extrair_texto(texto: str) -> str:
+    """Remove tags HTML e extrai texto limpo incluindo emails linkados."""
+    # Extrai e-mail de links mailto
+    texto = re.sub(r'<a[^>]*href="mailto:([^"]+)"[^>]*>.*?</a>', r'\1', texto)
+    # Remove menções @Bot
+    texto = re.sub(r"<at>[^<]+<\/at>", "", texto)
+    # Remove demais tags HTML
+    texto = re.sub(r"<[^>]+>", "", texto)
+    # Remove &nbsp; e espaços extras
+    texto = texto.replace("&nbsp;", " ").strip()
+    return texto
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -15,13 +26,15 @@ def webhook():
     if not dados:
         return jsonify({"type": "message", "text": "Erro ao processar mensagem."}), 200
 
-    texto = dados.get("text", "")
-    texto = re.sub(r"<at>[^<]+<\/at>", "", texto).strip()
-    texto = re.sub(r"<[^>]+>", "", texto).strip()
+    texto_raw = dados.get("text", "")
+    texto = extrair_texto(texto_raw)
 
     usuario       = dados.get("from", {})
     nome          = usuario.get("name", "Desconhecido")
     aad_object_id = usuario.get("aadObjectId", "")
+
+    print(f"[WEBHOOK] texto_raw={texto_raw}")
+    print(f"[WEBHOOK] texto_limpo={texto}")
 
     resposta = processar_mensagem(texto, nome, aad_object_id)
 
@@ -33,7 +46,7 @@ def webhook():
 def processar_mensagem(texto: str, nome: str, user_id: str) -> str:
     texto_lower = texto.lower()
 
-    # Usuário está cadastrando o e-mail
+    # Cadastro de e-mail
     if texto_lower.startswith("meu email:") or texto_lower.startswith("meu e-mail:"):
         email_informado = texto.split(":", 1)[1].strip()
         if "@" in email_informado:
