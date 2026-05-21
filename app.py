@@ -28,7 +28,6 @@ def webhook():
 
     print(f"[WEBHOOK] nome={nome} aad_object_id={aad_object_id} texto={texto}")
 
-    # Envia para a IA
     payload = {
         "nome": nome,
         "aad_object_id": aad_object_id,
@@ -36,9 +35,10 @@ def webhook():
     }
 
     try:
-        resposta_ia = requests.post(IA_WEBHOOK_URL, json=payload, timeout=10)
-        print(f"[IA] status={resposta_ia.status_code} resposta={resposta_ia.text}")
-        resposta_texto = resposta_ia.json().get("text") or resposta_ia.json().get("message") or resposta_ia.text
+        resposta_ia = requests.post(IA_WEBHOOK_URL, json=payload, timeout=15)
+        dados_ia = resposta_ia.json()
+        print(f"[IA] status={resposta_ia.status_code} dados={dados_ia}")
+        resposta_texto = dados_ia.get("response") or dados_ia.get("text") or dados_ia.get("message", "Sem resposta da IA.")
     except Exception as e:
         print(f"[IA] Erro: {e}")
         resposta_texto = "Não consegui processar sua mensagem no momento."
