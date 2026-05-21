@@ -1,8 +1,11 @@
 from flask import Flask, request, jsonify
 import re
 import os
+import requests
 
 app = Flask(__name__)
+
+IA_WEBHOOK_URL = "https://main-production-8edf.up.railway.app/webhook-test/5733cc81-06cf-4a08-b68b-8ad3d3b134b3"
 
 def extrair_texto(texto: str) -> str:
     texto = re.sub(r'<a[^>]*href="mailto:([^"]+)"[^>]*>.*?</a>', r'\1', texto)
@@ -18,16 +21,31 @@ def webhook():
     if not dados:
         return jsonify({"type": "message", "text": "Erro ao processar mensagem."}), 200
 
-    texto = extrair_texto(dados.get("text", ""))
+    texto         = extrair_texto(dados.get("text", ""))
     usuario       = dados.get("from", {})
     nome          = usuario.get("name", "Desconhecido")
     aad_object_id = usuario.get("aadObjectId", "")
 
     print(f"[WEBHOOK] nome={nome} aad_object_id={aad_object_id} texto={texto}")
 
+    # Envia para a IA
+    payload = {
+        "nome": nome,
+        "aad_object_id": aad_object_id,
+        "mensagem": texto
+    }
+
+    try:
+        resposta_ia = requests.post(IA_WEBHOOK_URL, json=payload, timeout=10)
+        print(f"[IA] status={resposta_ia.status_code} resposta={resposta_ia.text}")
+        resposta_texto = resposta_ia.json().get("text") or resposta_ia.json().get("message") or resposta_ia.text
+    except Exception as e:
+        print(f"[IA] Erro: {e}")
+        resposta_texto = "Não consegui processar sua mensagem no momento."
+
     return jsonify({
         "type": "message",
-        "text": f"nome: {nome}\naad_object_id: {aad_object_id}\nmensagem: {texto}"
+        "text": resposta_texto
     })
 
 @app.route("/", methods=["GET"])
