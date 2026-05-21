@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import re
+import os
 
 app = Flask(__name__)
 
@@ -11,10 +12,7 @@ def webhook():
         return jsonify({"type": "message", "text": "Erro ao processar mensagem."}), 200
 
     texto = dados.get("text", "")
-
-    # Remove a menção @NomeDoBot do texto
     texto = re.sub(r"<at>[^<]+<\/at>", "", texto).strip()
-
     resposta = processar_mensagem(texto)
 
     return jsonify({
@@ -46,4 +44,5 @@ def health():
     return jsonify({"status": "online", "bot": "Deployd"}), 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
